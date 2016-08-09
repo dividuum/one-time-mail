@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>One Time Mail</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width">
+    <meta name="robots" content="noindex">
+    <style>
+      body {
+        font-family: "Source Sans Pro", sans-serif;
+      }
+      #login-box {
+        width: 300px;
+        height: 100px;
+        text-align: center;
+        background-color: white;
+        border: 1px solid #ccc;
+
+        position: absolute;
+        top:0;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        margin: auto;
+      }
+      #login-box div {
+        width: 300px;
+        height: 100px;
+        display:table-cell;
+        vertical-align:middle;
+      }
+      #nav-box {
+        visibility: hidden;
+        margin-bottom: 3px;
+      }
+      .mail {
+        margin-bottom: 10px;
+        background-color: #fff;
+        border: 2px solid #eee;
+      }
+      .mail .header {
+        border: 1px solid #ccc;
+        background-color: #eee;
+        margin: 2px;
+        border-radius: 2px;
+        padding: 3px;
+      }
+      .mail .date {
+        float: right;
+        color: #888;
+      }
+      .mail .subject {
+        font-weight: bold;
+      }
+      .mail .body {
+        margin: 3px;
+        white-space: pre-wrap;
+        overflow: hidden;
+      }
+      #loader {
+        position: absolute;
+        right: 0;
+        top: 0;
+        padding: 5px;
+        width: 100px;
+        text-align: center;
+        background-color: orange;
+      }
+    </style>
+    <meta http-equiv="cache-control" content="max-age=0"/>
+    <meta http-equiv="cache-control" content="no-cache"/>
+    <meta http-equiv="expires" content="0"/>
+    <meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT"/>
+    <meta http-equiv="pragma" content="no-cache"/>
+  </head>
+  <body>
+    <div id="loader">Loading...</div>
+    <div id='login-box'>
+      <div>
+        Your token please<br/><br/>
+        <input id='token' type='password' placeholder='***********' autocomplete="off">
+      </div>
+    </div>
+
+    <div id='nav-box'>
+      <select id='folders'>
+      </select>
+      <button id='reload'>Reload</button>
+      <button id='logout'>Logout</button>
+    </div>
+
+    <div id='mails'>
+    </div>
+       
+    <script type="text/javascript">
+      var error_msg = location.hash;
+      if (error_msg.length > 1) {
+        setTimeout(function() {
+          alert(error_msg.substr(1));
+        }, 500);
+        history.pushState("", document.title, window.location.pathname);
+      }
+
+      function E(id) {
+        return document.getElementById(id)
+      }
+      function remove(elem) {
+        elem.parentNode.removeChild(elem);
+      }
+      function show(elem) {
+        elem.style.visibility = 'visible';
+      }
+      function hide(elem) {
+        elem.style.visibility = 'hidden';
+      }
+      function div(clazz, text) {
+        var e = document.createElement("div");
+        e.className = clazz;
+        if (text)
+          e.appendChild(document.createTextNode(text));
+        return e;
+      }
+      function pre(clazz, text) {
+        var e = document.createElement("pre");
+        e.className = clazz;
+        e.appendChild(document.createTextNode(text));
+        return e;
+      }
+      function reload_and_show_error(message) {
+        window.location.hash = message;
+        window.location.reload();
+      }
+
+      var loc = window.location;
+      var ws = new WebSocket((loc.protocol == 'https:' ? 'wss:' : 'ws:') + '//' + loc.host + '/ws');
+      var loader = E("loader");
+      
+      function send_event(event, data) {
+        ws.send(JSON.stringify({
+          'event': event,
+          'data': data,
+        }));
+        show(loader);
+      }
+
+      function get_messages() {
+        var e = E("folders");
+        var folder = e.options[e.selectedIndex].value;
+        send_event('get_messages', {'folder': folder});
+        E("mails").innerHTML = ''; // clear all
+      }
+
+      ws.onopen = function(event){
+        document.body.style.backgroundColor = '#400';
+        hide(loader);
+      }
+
+      ws.onmessage = function(event){
+        if (event.data == '') // keepalive
+          return;
+        hide(loader);
+        var message = JSON.parse(event.data);
+        var event = message.event;
+        var data = message.data;
+
+        if (event == "error") {
+          reload_and_show_error(data.message);
+        } else if (event == "expire_warn") {
+          document.body.style.backgroundColor = '#FCC';
+        } else if (event == "authenticated") {
+          document.body.style.backgroundColor = '#CFC';
+        } else if (event == "folders") {
+          var folders = data.folders;
+          show(E("nav-box"));
+          var e = E("folders");
+          for (var idx = 0; idx < folders.length; idx++) {
+            var folder = folders[idx];
+            var option = document.createElement("option");
+            option.text = folder[1];
+            option.value = folder[0];
+            e.add(option);
+          }
+          get_messages();
+        } else if (event == "mails") {
+          var mails = data.mails;
+          var e = E("mails");
+          for (var idx = 0; idx < mails.length; idx++) {
+            var mail = mails[idx];
+            var m = div("mail");
+
+            var h = div("header")
+            h.appendChild(div("from", mail.from));
+            h.appendChild(div("date", mail.date));
+            h.appendChild(div("subject", mail.subject));
+            m.appendChild(h);
+
+            m.appendChild(pre("body", mail.body));
+
+            e.appendChild(m);
+          }
+          if (idx == 0)
+            e.appendChild(div("no-mails", "No mails in this folder"));
+        }
+      }
+
+      ws.onclose = function(event){
+        reload_and_show_error("connection lost");
+      }
+
+      E('token').addEventListener('keyup', function(e) {
+        if (e.keyCode == 13) {
+          var token = e.target.value;
+          remove(E("login-box"));
+          send_event("authenticate", {'token': token});
+        }
+      });
+
+      E('logout').addEventListener('click', function() {
+        window.location.reload();
+      });
+      E('folders').addEventListener('change', get_messages);
+      E('reload').addEventListener('click', get_messages);
+
+      E('token').focus();
+    </script>
+  </body>
+</html>

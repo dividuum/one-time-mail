@@ -1,0 +1,19 @@
+{
+  "auth": {
+    "hostname": "IMAP.EXAMPLE.ORG",
+    "username": "USERNAME",
+    "password": "PASSWORD"
+  },
+  "folders": {
+    "INBOX": "Inbox",
+    "Some/Other/MailboxPath": "MailboxName"
+  },
+  "max_session_duration": 240,
+  "last_n_days": 21,
+  "authenticator": {
+    "name": "otp",
+    "args": {
+      "state_file": "state.otp"
+    }
+  }
+}
