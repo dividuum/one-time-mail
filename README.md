@@ -1,4 +1,4 @@
-= One Time Mail
+# One Time Mail
 
 A quick way of accessing predefined mailboxes in an IMAP account
 with a browser using one time passwords or a yubikey.
@@ -7,7 +7,7 @@ with a browser using one time passwords or a yubikey.
 
 ![Mailbox screen](screenshot-mailbox.png)
 
-== Why? How? What?
+## Why? How? What?
 
 I have my emails on [FastMail](https://fastmail.com). They recently
 released an [update](https://blog.fastmail.com/2016/07/25/two-step-verification-and-other-new-security-features/)
@@ -66,9 +66,9 @@ ln -s /mail /etc/service
 # Add proper SSL using nginx now (see below)
 ```
 
-= Configuration
+# Configuration
 
-== Setting up nginx
+## Setting up nginx
 
 Make sure to setup a proper secure https server (using
 for example with a letsencrypt certificate). You can then
@@ -118,7 +118,7 @@ server {
 }
 ```
 
-== Using One Time Passwords
+## Using One Time Passwords
 
 Generate the file `state.otp` by running
 
@@ -147,7 +147,7 @@ Finally add this `authenticator` configuration to `config.json`:
 
 If you run out of tokens just repeat the pwgen command.
 
-== Using a YubiKey
+## Using a YubiKey
 
 Goto https://upgrade.yubico.com/getapikey/ and get an API key.
 Then add this `authenticator` configuration to `config.json`:
