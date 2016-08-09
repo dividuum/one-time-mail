@@ -54,6 +54,8 @@ pip install -r requirements.txt
 useradd otm
 
 cp config.json.example config.json
+chown root:root config.json
+chmod 600 config.json
 # Edit config.json now (see below)
 
 # You can try otm now by starting
