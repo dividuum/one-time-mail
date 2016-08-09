@@ -1,6 +1,7 @@
 from gevent import monkey; monkey.patch_all()
 import gevent_openssl; gevent_openssl.monkey_patch()
 
+import re
 import email
 import json
 import traceback
@@ -20,6 +21,8 @@ sockets = Sockets(app)
 spawn = gevent.Greenlet.spawn
 
 CONFIG = json.load(file("config.json"))
+
+URL_REGEX = re.compile(r"(http|ftp|https)://([\w_-]+(?:(?:\.[\w_-]+)+))([\w.,@?^=%&:/~+#-]*[\w@?^=%&/~+#-])?")
 
 def remove_tags(garbage):
     return BeautifulSoup(garbage, "lxml").get_text()
@@ -146,12 +149,22 @@ class IMAP(Actor):
                 charset = b.get_content_charset() or 'utf-8'
                 body = b.get_payload(decode=True).decode(charset, errors='replace')
 
+            body = remove_tags(body)
+
+            replace_links = any(
+                re.search(regex, body, re.M|re.S)
+                for regex in CONFIG['mask_links']
+            )
+
+            if replace_links:
+                body = URL_REGEX.sub("<link masked>", body)
+
             return {
                 'from': b['from'],
                 'to': b['to'],
                 'date': b['date'],
                 'subject': b['subject'],
-                'body': remove_tags(body),
+                'body': body,
             }
 
         mails = []

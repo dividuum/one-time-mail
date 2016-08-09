@@ -29,6 +29,8 @@ machine. So I build this tools. It provides the following features:
    to logging out. It also means that there are no cookies
    that could be stolen and reused elsewhere.
  * Session are time limited.
+ * Filter out links in emails based on body content. This
+   might prevent showing password reset links.
 
 Not available right now:
 
@@ -38,8 +40,6 @@ Not available right now:
 
 Ideas:
 
- * Add the ability create a regex(?) based blacklist that
-   would filter out mails.
  * Add sorting, pagination.
  * Ability to mark mails as read.
 
