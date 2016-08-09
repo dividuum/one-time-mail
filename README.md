@@ -43,7 +43,7 @@ Ideas:
  * Add sorting, pagination.
  * Ability to mark mails as read.
 
-= Installation on Ubuntu
+# Installation on Ubuntu
 
 ```
 apt-get install python python-dev python-virtualenv python-lxml libffi-dev libssl-dev
