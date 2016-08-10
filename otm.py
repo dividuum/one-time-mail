@@ -2,8 +2,11 @@ from gevent import monkey; monkey.patch_all()
 import gevent_openssl; gevent_openssl.monkey_patch()
 
 import re
+import pytz
 import email
+import email.header
 import json
+import time
 import traceback
 from imapclient import IMAPClient
 from datetime import datetime, timedelta
@@ -42,6 +45,10 @@ class Authenticator(object):
 
     def verify_impl(self, token):
         return False
+
+class AuthenticatorDebugDoNotUse(Authenticator):
+    def verify_impl(self, token):
+        return True
 
 class AuthenticatorOTP(Authenticator):
     def __init__(self, state_file):
@@ -84,7 +91,8 @@ class AuthenticatorYUBI(Authenticator):
 Authenticator = {
     "yubi": AuthenticatorYUBI,
     "otp": AuthenticatorOTP,
-}[CONFIG['authenticator']['name']](**CONFIG['authenticator']['args'])
+    "debug-do-not-use": AuthenticatorDebugDoNotUse,
+}[CONFIG['authenticator']['name']](**CONFIG['authenticator'].get('args', {}))
 
 class Actor(gevent.Greenlet):
     def __init__(self, *args, **kwargs):
@@ -124,14 +132,13 @@ class IMAP(Actor):
         self._client = client
         self._folder = None
 
-    def get_messages(self, folder):
+    def get_messages(self, folder, query):
         # XXX: error handling
         if folder != self._folder:
             self._imap.select_folder(folder, readonly=True)
             self._folder = folder
-        threshold = (datetime.now() - timedelta(days=CONFIG['last_n_days'])).date()
-        ids = self._imap.search(['NOT', 'DELETED', 'SINCE', threshold])
-        messages = self._imap.fetch(ids, ['INTERNALDATE', 'FLAGS', 'RFC822.HEADER', 'RFC822'])
+        ids = self._imap.search(query)
+        messages = self._imap.fetch(ids, ['FLAGS', 'RFC822'])
 
         def parse_message(raw):
             b = email.message_from_string(raw)
@@ -159,18 +166,31 @@ class IMAP(Actor):
             if replace_links:
                 body = URL_REGEX.sub("<link masked>", body)
 
+            date = b['date']
+            try:
+                timestamp = email.utils.mktime_tz(email.utils.parsedate_tz(date))
+                date = datetime.fromtimestamp(timestamp, pytz.utc).strftime("%c UTC")
+            except:
+                traceback.print_exc()
+                timestamp = time.time()
+
+            def dh(value):
+                return unicode(email.header.make_header(email.header.decode_header(value)))
+
             return {
-                'from': b['from'],
-                'to': b['to'],
-                'date': b['date'],
-                'subject': b['subject'],
+                'from': dh(b['from']),
+                'to': dh(b['to']),
+                'subject': dh(b['subject']),
+                'date': date,
                 'body': body,
+                'sort_key': timestamp,
+                'unread': '\\Seen' not in message['FLAGS'],
             }
 
         mails = []
         for id, message in messages.iteritems():
-            parsed = parse_message(message['RFC822'])
-            mails.append(parsed)
+            mails.append(parse_message(message['RFC822']))
+        mails.sort(key=itemgetter('sort_key'), reverse=True)
 
         self._client.send('mails', dict(
             folder = folder,
@@ -220,10 +240,10 @@ class Client(Actor):
     @external_api
     def authenticate(self, token):
         if self._imap:
-            self.send_error_and_close('already authenticated')
+            self.send_error_and_close('Already authenticated')
             return
         if not Authenticator.verify(token):
-            self.send_error_and_close('invalid token')
+            self.send_error_and_close('Invalid token')
             return
         self._imap = IMAP(self, 
             CONFIG['auth']['hostname'],
@@ -231,21 +251,25 @@ class Client(Actor):
             CONFIG['auth']['password'],
         )
         self._killer_task = spawn(self.killer_task)
-        self.send_to_client('authenticated')
-        self.send_to_client('folders', folders=sorted(
-            CONFIG['folders'].iteritems(),
-            key=itemgetter(1),
-        ))
+        self.send_to_client('authenticated', expires=CONFIG['max_session_duration'])
+        self.send_to_client('folders', folders=sorted(CONFIG['folders']))
 
     @external_api
     def get_messages(self, folder):
         if not self._imap:
-            self.send_error_and_close('not authenticated')
+            self.send_error_and_close('Not authenticated')
             return
         if folder not in CONFIG['folders']:
-            self.send_error_and_close('invalid folder')
+            self.send_error_and_close('Invalid folder')
             return
-        self._imap.send('get_messages', folder)
+        folder_settings = CONFIG['folders'][folder]
+        def parse(tok):
+            if isinstance(tok, basestring):
+                return tok
+            elif isinstance(tok, (int, long)):
+                return (datetime.now() - timedelta(days=tok)).date()
+        query = [parse(tok) for tok in folder_settings['query']]
+        self._imap.send('get_messages', folder_settings['folder'], query)
 
     def client_message(self, message):
         try:
@@ -258,7 +282,7 @@ class Client(Actor):
             fn(**data)
         except:
             traceback.print_exc()
-            self.send_error_and_close('invalid message')
+            self.send_error_and_close('Invalid message')
 
 class Socket(Actor):
     def setup(self, ws):

@@ -33,6 +33,9 @@
         visibility: hidden;
         margin-bottom: 3px;
       }
+      #time {
+        float: right;
+      }
       .mail {
         margin-bottom: 10px;
         background-color: #fff;
@@ -44,6 +47,9 @@
         margin: 2px;
         border-radius: 2px;
         padding: 3px;
+      }
+      .mail .unread {
+        border-left: 15px solid green;
       }
       .mail .date {
         float: right;
@@ -87,6 +93,7 @@
       </select>
       <button id='reload'>Reload</button>
       <button id='logout'>Logout</button>
+      <div id='time'></div>
     </div>
 
     <div id='mails'>
@@ -169,6 +176,11 @@
           document.body.style.backgroundColor = '#FCC';
         } else if (event == "authenticated") {
           document.body.style.backgroundColor = '#CFC';
+          var authenticated = new Date();
+          setInterval(function() {
+            var remaining = data.expires - Math.floor((new Date() - authenticated) / 1000);
+            E("time").innerHTML = remaining + " " + (new Date()).toUTCString();
+          }, 1000);
         } else if (event == "folders") {
           var folders = data.folders;
           show(E("nav-box"));
@@ -176,8 +188,8 @@
           for (var idx = 0; idx < folders.length; idx++) {
             var folder = folders[idx];
             var option = document.createElement("option");
-            option.text = folder[1];
-            option.value = folder[0];
+            option.text = folder;
+            option.value = folder;
             e.add(option);
           }
           get_messages();
@@ -192,6 +204,8 @@
             h.appendChild(div("from", mail.from));
             h.appendChild(div("date", mail.date));
             h.appendChild(div("subject", mail.subject));
+            if (mail.unread)
+              h.className += " unread";
             m.appendChild(h);
 
             m.appendChild(pre("body", mail.body));

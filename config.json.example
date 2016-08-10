@@ -5,14 +5,19 @@
     "password": "PASSWORD"
   },
   "folders": {
-    "INBOX": "Inbox",
-    "Some/Other/MailboxPath": "MailboxName"
+    "Inbox": {
+      "folder": "INBOX",
+      "query": ["SINCE", 21]
+    },
+    "Projects": {
+      "folder": "Projects/something",
+      "query": ["SINCE", 7, "UNSEEN"]
+    }
   },
   "max_session_duration": 240,
   "mask_links": [
     "credentials|password|recover|reset"
   ],
-  "last_n_days": 21,
   "authenticator": {
     "name": "otp",
     "args": {
