@@ -46,7 +46,7 @@ Ideas:
 # Installation on Ubuntu
 
 ```
-apt-get install python python-dev python-virtualenv python-lxml libffi-dev libssl-dev
+apt-get install python python-dev python-virtualenv python-lxml python-tz libffi-dev libssl-dev
 mkdir /mail && cd /mail
 virtualenv --system-site-packages env
 . env/bin/activate
