@@ -2,12 +2,16 @@ from gevent import monkey; monkey.patch_all()
 import gevent_openssl; gevent_openssl.monkey_patch()
 
 import re
+import random
+import string
 import pytz
 import email
 import email.header
 import json
 import time
 import traceback
+import smtplib
+from email.mime.text import MIMEText
 from imapclient import IMAPClient
 from datetime import datetime, timedelta
 from operator import itemgetter
@@ -15,7 +19,7 @@ import gevent
 from gevent import Greenlet
 from gevent.queue import Queue
 from gevent.lock import Semaphore
-from flask import Flask, render_template
+from flask import Flask, render_template, Response, request
 from flask_sockets import Sockets
 from bs4 import BeautifulSoup
 
@@ -125,7 +129,6 @@ class Actor(gevent.Greenlet):
 
 class IMAP(Actor):
     def setup(self, client, hostname, username, password):
-        print hostname, username, password
         self._imap  = IMAPClient(hostname, use_uid=True, ssl=True)
         # self._imap.debug = True
         self._imap.login(username, password)
@@ -181,6 +184,7 @@ class IMAP(Actor):
                 'from': dh(b['from']),
                 'to': dh(b['to']),
                 'subject': dh(b['subject']),
+                'msg_id': b['message-id'],
                 'date': date,
                 'body': body,
                 'sort_key': timestamp,
@@ -209,6 +213,7 @@ class Client(Actor):
         self._socket = socket
         self._imap = None
         self._killer_task = None
+        self.send_to_client('connected')
 
     def send_to_client(self, event, **data):
         self._socket.send('send_client', json.dumps(dict(
@@ -246,9 +251,9 @@ class Client(Actor):
             self.send_error_and_close('Invalid token')
             return
         self._imap = IMAP(self, 
-            CONFIG['auth']['hostname'],
-            CONFIG['auth']['username'],
-            CONFIG['auth']['password'],
+            CONFIG['auth']['imap']['hostname'],
+            CONFIG['auth']['imap']['username'],
+            CONFIG['auth']['imap']['password'],
         )
         self._killer_task = spawn(self.killer_task)
         self.send_to_client('authenticated', expires=CONFIG['max_session_duration'])
@@ -270,6 +275,34 @@ class Client(Actor):
                 return (datetime.now() - timedelta(days=tok)).date()
         query = [parse(tok) for tok in folder_settings['query']]
         self._imap.send('get_messages', folder_settings['folder'], query)
+
+    @external_api
+    def send_mail(self, to, subject, replyto, body):
+        if not self._imap:
+            self.send_error_and_close('Not authenticated')
+            return
+        server = smtplib.SMTP_SSL(
+            CONFIG['auth']['smtp']['hostname'],
+            CONFIG['auth']['smtp']['port'],
+        )
+        # server.set_debuglevel(1)
+        # server.starttls()
+        server.login(
+            CONFIG['auth']['smtp']['username'],
+            CONFIG['auth']['smtp']['password'],
+        )
+        msg = MIMEText(body, 'plain', 'utf-8')
+        msg['Subject'] = subject
+        msg['From'] = CONFIG['auth']['smtp']['from']
+        msg['To'] = to
+        msg['In-Reply-To'] = replyto
+        server.sendmail(
+            CONFIG['auth']['smtp']['from'],
+            [to], msg.as_string()
+        )
+        server.quit()
+        # XXX: This should also put a copy of the sent mail into the SENT folder?
+        self.send_to_client('mail_sent')
 
     def client_message(self, message):
         try:
@@ -298,7 +331,7 @@ class Socket(Actor):
         self._ws.send(message)
 
 @sockets.route('/ws')
-def echo_socket(ws):
+def session_socket(ws):
     socket = Socket(ws)
     client = Client(socket)
 
@@ -322,7 +355,23 @@ def echo_socket(ws):
 
 @app.route('/')
 def index():
-    return render_template("otm.jinja")
+    nonce = ''.join(random.sample(
+        string.lowercase+string.digits, 16
+    ))
+    r = Response(render_template("otm.jinja",
+        nonce=nonce
+    ))
+    r.headers['Content-Security-Policy'] = ';'.join((
+        "default-src 'none'",
+        "style-src 'nonce-%s'" % nonce,
+        "script-src 'nonce-%s'" % nonce,
+        "connect-src %s://%s" % (
+            "wss" if request.is_secure else "ws",
+            request.host,
+        ),
+    ))
+    r.headers['X-Frame-Options'] = 'DENY'
+    return r
 
 if __name__ == "__main__":
     from gevent import pywsgi

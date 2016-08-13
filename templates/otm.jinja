@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width">
     <meta name="robots" content="noindex">
-    <style>
+    <style nonce="{{nonce}}">
       body {
         font-family: "Source Sans Pro", sans-serif;
       }
@@ -15,6 +15,7 @@
         text-align: center;
         background-color: white;
         border: 1px solid #ccc;
+        visibility: hidden;
 
         position: absolute;
         top:0;
@@ -35,6 +36,16 @@
       }
       #time {
         float: right;
+      }
+      #mailbox {
+        visibility: hidden;
+        width: 100%;
+      }
+      #mailbox td {
+        vertical-align: top;
+      }
+      #mails {
+        width: 50%;
       }
       .mail {
         margin-bottom: 10px;
@@ -62,6 +73,20 @@
         margin: 3px;
         white-space: pre-wrap;
         overflow: hidden;
+      }
+      #compose {
+        background-color: #fff;
+        border: 2px solid #eee;
+        padding: 20px;
+      }
+      #compose input {
+        font-size: 130%;
+        margin-bottom: 10px;
+        width: 100%;
+      }
+      #compose textarea {
+        font-size: 130%;
+        width: 100%;
       }
       #loader {
         position: absolute;
@@ -96,10 +121,25 @@
       <div id='time'></div>
     </div>
 
-    <div id='mails'>
-    </div>
+    <table id='mailbox'>
+      <tr>
+        <td id='mails'>
+        </td>
+        <td>
+          <div id='compose'>
+            <input id='compose_to' type='text' placeholder='To'/><br/>
+            <input id='compose_subject' type='text' placeholder='Subject'/><br/>
+            <input id='compose_replyto' type='hidden'/><br/>
+            <br/>
+            <textarea id='compose_body' cols=75 rows=40></textarea>
+            <br/>
+            <button id='compose_send'>Send</button>
+          </div>
+        </td>
+      </tr>
+    </table>
        
-    <script type="text/javascript">
+    <script type="text/javascript" nonce="{{nonce}}">
       var error_msg = location.hash;
       if (error_msg.length > 1) {
         setTimeout(function() {
@@ -133,6 +173,12 @@
         e.appendChild(document.createTextNode(text));
         return e;
       }
+      function button(clazz, text) {
+        var e = document.createElement("button");
+        e.className = clazz;
+        e.appendChild(document.createTextNode(text));
+        return e;
+      }
       function reload_and_show_error(message) {
         window.location.hash = message;
         window.location.reload();
@@ -150,16 +196,49 @@
         show(loader);
       }
 
+      function wrap_mail(str, width) {
+        function testWhite(x) {
+          return /^\s$/.test(x.charAt(0));
+        }
+        function wordWrap(str, maxWidth) {
+          // http://stackoverflow.com/a/14487422
+          var done = false;
+          var out = [];
+          while (true) {
+            found = false;
+            for (i = maxWidth - 1; i >= 0; i--) {
+              if (testWhite(str.charAt(i))) {
+                out.push(str.slice(0, i));
+                str = str.slice(i + 1);
+                found = true;
+                break;
+              }
+            }
+            if (!found) {
+              out.push(str.slice(0, maxWidth));
+              str = str.slice(maxWidth);
+            }
+            if (str.length < maxWidth)
+              break;
+          };
+          return out;
+        }
+        function strip_sig(str) {
+          return str.replace(/-- [\s\S]*$/, '');
+        }
+        var lines = strip_sig(str).trim().split('\n');
+        var out = [];
+        for (var idx = 0; idx < lines.length; idx++) {
+          out = out.concat(wordWrap(lines[idx].trim(), width));
+        }
+        return "> " + out.join("\n> ");
+      }
+
       function get_messages() {
         var e = E("folders");
         var folder = e.options[e.selectedIndex].value;
         send_event('get_messages', {'folder': folder});
         E("mails").innerHTML = ''; // clear all
-      }
-
-      ws.onopen = function(event){
-        document.body.style.backgroundColor = '#400';
-        hide(loader);
       }
 
       ws.onmessage = function(event){
@@ -172,10 +251,14 @@
 
         if (event == "error") {
           reload_and_show_error(data.message);
+        } else if (event == "connected") {
+          document.body.style.backgroundColor = '#400';
+          show(E("login-box"));
         } else if (event == "expire_warn") {
           document.body.style.backgroundColor = '#FCC';
         } else if (event == "authenticated") {
           document.body.style.backgroundColor = '#CFC';
+          show(E("mailbox"));
           var authenticated = new Date();
           setInterval(function() {
             var remaining = data.expires - Math.floor((new Date() - authenticated) / 1000);
@@ -193,6 +276,11 @@
             e.add(option);
           }
           get_messages();
+        } else if (event == "mail_sent") {
+          E("compose_to").value = "";
+          E("compose_subject").value = "";
+          E("compose_replyto").value = "";
+          E("compose_body").value = "";
         } else if (event == "mails") {
           var mails = data.mails;
           var e = E("mails");
@@ -210,6 +298,17 @@
 
             m.appendChild(pre("body", mail.body));
 
+            var reply = button("reply", "Reply");
+            reply.addEventListener('click', (function(mail) {
+              return function() {
+                E("compose_to").value = mail.from;
+                E("compose_subject").value = "Re: "+ mail.subject;
+                E("compose_replyto").value = mail.msg_id;
+                E("compose_body").value = wrap_mail(mail.body, 75);
+              }
+            })(mail));
+            m.appendChild(reply)
+
             e.appendChild(m);
           }
           if (idx == 0)
@@ -218,8 +317,21 @@
       }
 
       ws.onclose = function(event){
-        reload_and_show_error("connection lost");
+        setTimeout(function() {
+          reload_and_show_error("connection lost");
+        }, 2000);
       }
+
+      E('compose_send').addEventListener('click', function(e) {
+        if (!confirm("Send this email?"))
+          return;
+        send_event('send_mail', {
+          'to': E("compose_to").value,
+          'subject': E("compose_subject").value,
+          'replyto': E("compose_replyto").value,
+          'body': E("compose_body").value,
+        });
+      });
 
       E('token').addEventListener('keyup', function(e) {
         if (e.keyCode == 13) {

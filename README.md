@@ -34,8 +34,7 @@ machine. So I build this tools. It provides the following features:
 
 Not available right now:
 
- * Responding to mails, marking them as read or other
-   mailbox mutating operations. Everything is read-only
+ * Any mailbox mutating operations. Everything is read-only
    at the moment.
 
 Ideas:
@@ -116,6 +115,8 @@ server {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header Host $server_name;
     }
 }
 ```

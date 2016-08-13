@@ -1,8 +1,17 @@
 {
   "auth": {
-    "hostname": "IMAP.EXAMPLE.ORG",
-    "username": "USERNAME",
-    "password": "PASSWORD"
+    "imap": {
+      "hostname": "IMAP.EXAMPLE.ORG",
+      "username": "USERNAME",
+      "password": "PASSWORD"
+    },
+    "smtp": {
+      "hostname": "SMTP.EXAMPLE.ORG",
+      "port": 587,
+      "username": "USERNAME",
+      "password": "PASSWORD",
+      "from": "Somebody <somebody@example.org>"
+    }
   },
   "folders": {
     "Inbox": {
