@@ -365,7 +365,7 @@ def index():
         "default-src 'none'",
         "style-src 'nonce-%s'" % nonce,
         "script-src 'nonce-%s'" % nonce,
-        "connect-src %s://%s" % (
+        "connect-src %s://%s/ws" % (
             "wss" if request.is_secure else "ws",
             request.host,
         ),
@@ -376,5 +376,7 @@ def index():
 if __name__ == "__main__":
     from gevent import pywsgi
     from geventwebsocket.handler import WebSocketHandler
+    from werkzeug.contrib.fixers import ProxyFix
+    app = ProxyFix(app)
     server = pywsgi.WSGIServer(('127.0.0.1', 8080), app, handler_class=WebSocketHandler)
     server.serve_forever()
