@@ -7,7 +7,7 @@
     },
     "smtp": {
       "hostname": "SMTP.EXAMPLE.ORG",
-      "port": 587,
+      "port": 465,
       "username": "USERNAME",
       "password": "PASSWORD",
       "from": "Somebody <somebody@example.org>"
