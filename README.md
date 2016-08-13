@@ -24,6 +24,7 @@ machine. So I build this tools. It provides the following features:
 
  * One Time Password or YubiKey based authentication.
  * Read-Only access to a configurable set of mailboxes.
+ * A way of sending mails.
  * Authorization is bound to a websocket connection. So
    reloading the page or closing that websocket is equivalent
    to logging out. It also means that there are no cookies
